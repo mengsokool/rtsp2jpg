@@ -39,7 +39,14 @@ def register_camera(payload: RegisterRequest = Body(...)) -> RegisterResponse:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    token = str(uuid.uuid4())[:8]
+    # Generate a unique token for the camera registration.  While UUID4 collisions
+    # are already extremely unlikely, we still check existing entries to avoid
+    # registering the same token twice.
+    while True:
+        token = uuid.uuid4().hex
+        if not db.get_camera(token):
+            break
+
     cache.set_status(token, "connecting")
     db.add_camera(token, payload.rtsp_url, status="connecting")
     worker.start_worker(token, payload.rtsp_url, backend_flag)
