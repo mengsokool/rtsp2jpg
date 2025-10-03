@@ -40,7 +40,10 @@ docker run --rm -p 8000:8000 \
   uvicorn rtsp2jpg.app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-For local development with FFmpeg/GStreamer dependencies pre-installed use:
+The `.env` file is for service configuration knobs—database path, logging level, throttling, and similar options.
+Supply RTSP URLs (with credentials) via the `/register` API or follow the [overview quick start](docs/overview.md#quick-start).
+
+Run the automated tests at any time with:
 ```
 docker compose up --build
 ```
