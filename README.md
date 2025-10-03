@@ -12,7 +12,36 @@ Expose RTSP cameras as cached JPEG snapshots backed by FastAPI + OpenCV. rtsp2jp
 ## Quickstart
 Launch the stack with a single command:
 
-```bash
+## Quick start
+
+### Python environment
+```
+python -m venv .venv
+source .venv/bin/activate
+pip install -e .[test]
+uvicorn rtsp2jpg.app:app --host 0.0.0.0 --port 8000
+```
+
+### Docker
+```
+docker build -t rtsp2jpg .
+docker run --rm -p 8000:8000 --env-file .env.example rtsp2jpg
+```
+
+The published image starts a plain `uvicorn` process without `--reload`. To
+develop with live reload you can mount your source tree as a volume and add the
+flag, for example:
+
+```
+docker run --rm -p 8000:8000 \
+  -v "$(pwd)":/app \
+  --env-file .env.example \
+  rtsp2jpg \
+  uvicorn rtsp2jpg.app:app --host 0.0.0.0 --port 8000 --reload
+```
+
+For local development with FFmpeg/GStreamer dependencies pre-installed use:
+```
 docker compose up --build
 ```
 
