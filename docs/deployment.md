@@ -2,7 +2,7 @@
 
 rtsp2jpg ships with multiple deployment options. Choose the path that best matches your environment.
 
-## 1. Local Python environment
+## <a id="python-env"></a>Local Python environment
 Best for development and quick experimentation.
 
 ```bash
@@ -12,9 +12,9 @@ pip install -e .[test]
 uvicorn rtsp2jpg.app:app --host 0.0.0.0 --port 8000
 ```
 
-Use `.env` to override defaults and `pytest` to run the test suite.
+Use `.env` to override defaults and `pytest` to run the test suite. To stop the server press `Ctrl+C`.
 
-## 2. Docker
+## <a id="docker"></a>Docker
 The provided `Dockerfile` bundles Python 3.11, FFmpeg, and GStreamer plugins.
 
 ```bash
@@ -23,6 +23,7 @@ docker run --rm -p 8000:8000 --env-file .env.example rtsp2jpg
 ```
 
 Mount persistent storage if you want the SQLite database to survive restarts:
+
 ```bash
 docker run --rm -p 8000:8000 \
   -v $(pwd)/data:/data \
@@ -30,15 +31,29 @@ docker run --rm -p 8000:8000 \
   rtsp2jpg
 ```
 
-## 3. Docker Compose
+## <a id="docker-compose"></a>Docker Compose
 `docker-compose.yaml` offers a single-service stack ready to extend with dependencies (e.g., Prometheus exporters).
 
 ```bash
 docker compose up --build -d
 ```
 
-## 4. Kubernetes (example snippet)
+Stop the stack with `docker compose down`. Add services such as reverse proxies or metrics collectors to the same compose file.
+
+## <a id="pm2"></a>PM2
+Use [PM2](https://pm2.keymetrics.io/) to keep the FastAPI server alive on bare-metal or VM deployments.
+
+```bash
+pip install -e .
+pm2 start uvicorn --name rtsp2jpg -- \
+  rtsp2jpg.app:app --host 0.0.0.0 --port 8000
+```
+
+Optional: enable restarts on boot with `pm2 save` and `pm2 startup`. PM2's log aggregation provides quick visibility into worker health.
+
+## Kubernetes (example snippet)
 Minimal Deployment + Service example:
+
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
@@ -82,8 +97,9 @@ spec:
       targetPort: 8000
 ```
 
-## 5. Reverse proxy
+## Reverse proxy
 Place Nginx, Traefik, or Caddy in front to add TLS, authentication, or rate limiting. Example Nginx location block:
+
 ```nginx
 location /rtsp2jpg/ {
     proxy_pass http://rtsp2jpg:8000/;
@@ -92,8 +108,15 @@ location /rtsp2jpg/ {
 }
 ```
 
-## 6. Observability
+## Observability
 - Add metrics or logs by tailing stdout (`docker logs`) or shipping JSON logs from the container.
 - Expose Prometheus or OpenTelemetry metrics by integrating additional middleware (not shipped by default).
 
 Refer to the [Operations guide](operations.md) for runtime maintenance and tuning.
+
+## <a id="testing"></a>Testing
+Run the automated tests to validate your deployment:
+
+```bash
+pytest
+```
