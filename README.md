@@ -35,6 +35,9 @@ For local development with FFmpeg/GStreamer dependencies pre-installed use:
 docker compose up --build
 ```
 
+The `.env` file is for service configuration knobs—database path, logging level, throttling, and similar options.
+Supply RTSP URLs (with credentials) via the `/register` API or follow the [overview quick start](docs/overview.md#quick-start).
+
 Run the automated tests at any time with:
 ```
 pytest
