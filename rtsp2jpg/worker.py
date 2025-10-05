@@ -20,6 +20,8 @@ WORKERS: Dict[str, threading.Thread] = {}
 STOP_EVENTS: Dict[str, threading.Event] = {}
 BACKEND_CHOICE: Dict[str, Optional[int]] = {}
 
+MAX_CONSECUTIVE_FRAME_FAILURES = 5
+
 
 def start_worker(token: str, rtsp_url: str, backend_flag: Optional[int]) -> None:
     """Start a worker thread for the given camera token."""
@@ -65,6 +67,17 @@ def backend_flag_for(token: str) -> Optional[int]:
     return BACKEND_CHOICE.get(token)
 
 
+def _is_frame_valid(ok: bool, frame: Optional[object]) -> bool:
+    """Return True when the frame returned from VideoCapture looks usable."""
+
+    if not ok or frame is None:
+        return False
+    # Some backends return empty ndarrays when the decoder hiccups.
+    if getattr(frame, "size", 0) == 0:
+        return False
+    return True
+
+
 def _camera_worker(token: str, rtsp_url: str, stop_event: threading.Event) -> None:
     settings = get_settings()
     backend_flag = BACKEND_CHOICE.get(token)
@@ -84,13 +97,29 @@ def _camera_worker(token: str, rtsp_url: str, stop_event: threading.Event) -> No
             update_status(token, "active")
             LOGGER.info("%s: connected via %s", token, backend_name(backend_flag))
 
+            consecutive_failures = 0
             while not stop_event.is_set():
                 ok, frame = cap.read()
-                if not ok or frame is None:
-                    cache.set_status(token, "connecting")
-                    update_status(token, "connecting")
-                    LOGGER.warning("%s: frame read failed, reconnecting", token)
-                    break
+                if not _is_frame_valid(ok, frame):
+                    consecutive_failures += 1
+                    if consecutive_failures >= MAX_CONSECUTIVE_FRAME_FAILURES:
+                        cache.set_status(token, "connecting")
+                        update_status(token, "connecting")
+                        LOGGER.warning(
+                            "%s: too many invalid frames, reconnecting", token
+                        )
+                        break
+                    LOGGER.debug(
+                        "%s: skipping invalid frame (%d/%d)",
+                        token,
+                        consecutive_failures,
+                        MAX_CONSECUTIVE_FRAME_FAILURES,
+                    )
+                    if stop_event.wait(settings.read_throttle_sec):
+                        break
+                    continue
+
+                consecutive_failures = 0
                 cache.store_frame(token, frame, settings.jpeg_quality)
                 if stop_event.wait(settings.read_throttle_sec):
                     break
