@@ -10,7 +10,7 @@ from typing import Dict, Optional
 import cv2
 
 from . import cache
-from .backends import backend_name, open_stream
+from .backends import backend_name, choose_backend, open_stream
 from .config import get_settings
 from .db import update_status
 
@@ -19,16 +19,30 @@ LOGGER = logging.getLogger(__name__)
 WORKERS: Dict[str, threading.Thread] = {}
 STOP_EVENTS: Dict[str, threading.Event] = {}
 BACKEND_CHOICE: Dict[str, Optional[int]] = {}
+BACKEND_AUTODETECT: Dict[str, bool] = {}
 
 MAX_CONSECUTIVE_FRAME_FAILURES = 5
 
 
-def start_worker(token: str, rtsp_url: str, backend_flag: Optional[int]) -> None:
-    """Start a worker thread for the given camera token."""
+def start_worker(
+    token: str,
+    rtsp_url: str,
+    backend_flag: Optional[int],
+    *,
+    autodetect: bool = False,
+) -> None:
+    """Start a worker thread for the given camera token.
+
+    When ``autodetect`` is ``True`` the worker will periodically re-run backend
+    detection after connection failures until it succeeds, allowing startup to
+    proceed even if the camera was temporarily offline during the initial
+    bootstrap.
+    """
 
     stop_event = threading.Event()
     STOP_EVENTS[token] = stop_event
     BACKEND_CHOICE[token] = backend_flag
+    BACKEND_AUTODETECT[token] = autodetect
     cache.set_status(token, "connecting")
     update_status(token, "connecting")
 
@@ -54,6 +68,7 @@ def stop_worker(token: str, join_timeout: float = 2.0) -> None:
     WORKERS.pop(token, None)
     STOP_EVENTS.pop(token, None)
     BACKEND_CHOICE.pop(token, None)
+    BACKEND_AUTODETECT.pop(token, None)
     cache.set_status(token, "inactive")
     update_status(token, "inactive")
 
@@ -80,15 +95,35 @@ def _is_frame_valid(ok: bool, frame: Optional[object]) -> bool:
 
 def _camera_worker(token: str, rtsp_url: str, stop_event: threading.Event) -> None:
     settings = get_settings()
-    backend_flag = BACKEND_CHOICE.get(token)
 
     while not stop_event.is_set():
         try:
+            backend_flag = BACKEND_CHOICE.get(token)
+            autodetect = BACKEND_AUTODETECT.get(token, False)
+
             cap, note = open_stream(rtsp_url, backend_flag)
             if cap is None:
                 cache.set_status(token, "error", note)
                 update_status(token, "error")
                 LOGGER.error("%s: failed to open stream (%s)", token, note)
+                if autodetect:
+                    try:
+                        new_flag, backend_label = choose_backend(rtsp_url)
+                    except ValueError as detect_exc:
+                        LOGGER.debug(
+                            "%s: backend autodetect still failing: %s",
+                            token,
+                            detect_exc,
+                        )
+                    else:
+                        BACKEND_CHOICE[token] = new_flag
+                        BACKEND_AUTODETECT[token] = False
+                        LOGGER.info(
+                            "%s: backend autodetect succeeded with %s",
+                            token,
+                            backend_label,
+                        )
+                        continue
                 if stop_event.wait(settings.reconnect_delay_sec):
                     break
                 continue
