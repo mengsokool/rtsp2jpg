@@ -17,6 +17,27 @@ Use this checklist when diagnosing issues with rtsp2jpg.
 - Consider locking the backend preference to whichever is most stable (`prefer` during registration).
 - If using WiFi cameras, reduce frame rate by increasing `RTSP2JPG_READ_THROTTLE_SEC`.
 
+## FFmpeg/H.264 decode errors in the logs
+- Messages such as `co located POCs unavailable`, `cabac decode of qscale diff failed`, or
+  `error while decoding MB …` originate from FFmpeg when the camera delivers a corrupted or
+  incomplete H.264 frame. They are warnings that FFmpeg is attempting to conceal damaged macroblocks
+  and do **not** mean the rtsp2jpg worker has crashed.
+- These issues usually happen with unstable RTSP links (WiFi, congested networks, or cheap cameras).
+  Reduce packet loss by improving signal quality, lowering the camera bitrate, or switching to a more
+  reliable transport such as wired Ethernet or TCP RTSP mode when available.
+- The worker now listens to FFmpeg/GStreamer stderr and skips frames whenever these warnings appear,
+  preventing corrupted images from being cached. Tune the suppression window with
+  `RTSP2JPG_DECODER_WARNING_WINDOW_SEC` or disable monitoring entirely with
+  `RTSP2JPG_ENABLE_DECODER_LOG_MONITOR=false` if you run on a platform where redirecting stderr is not
+  desirable.
+- Ensure the camera's firmware is up to date. Some devices emit non-standard H.264 streams that trigger
+  FFmpeg error spam; firmware updates often fix encoder bugs.
+- If the errors flood the logs but snapshots still work, you can lower the log level to `WARNING` by
+  setting `RTSP2JPG_LOG_LEVEL=warning` so that FFmpeg's diagnostic messages are suppressed.
+- When the stream becomes unreadable, rtsp2jpg will reconnect according to the configured retry
+  policy. Investigate persistent failures by retrieving `/status/{token}` which includes the last
+  backend error text and the number of consecutive failures.
+
 ## High CPU usage
 - Lower the number of concurrent cameras per instance.
 - Increase `RTSP2JPG_READ_THROTTLE_SEC` or disable `uvicorn` auto-reload flags in production.

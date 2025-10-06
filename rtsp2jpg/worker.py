@@ -13,6 +13,8 @@ from . import cache
 from .backends import backend_name, open_stream
 from .config import get_settings
 from .db import update_status
+from .decoder_warnings import ensure_started as ensure_decoder_monitor_started
+from .decoder_warnings import had_recent_warning as decoder_warning_recent
 
 LOGGER = logging.getLogger(__name__)
 
@@ -81,6 +83,7 @@ def _is_frame_valid(ok: bool, frame: Optional[object]) -> bool:
 def _camera_worker(token: str, rtsp_url: str, stop_event: threading.Event) -> None:
     settings = get_settings()
     backend_flag = BACKEND_CHOICE.get(token)
+    ensure_decoder_monitor_started()
 
     while not stop_event.is_set():
         try:
@@ -114,6 +117,14 @@ def _camera_worker(token: str, rtsp_url: str, stop_event: threading.Event) -> No
                         token,
                         consecutive_failures,
                         MAX_CONSECUTIVE_FRAME_FAILURES,
+                    )
+                    if stop_event.wait(settings.read_throttle_sec):
+                        break
+                    continue
+
+                if decoder_warning_recent(settings.decoder_warning_window_sec):
+                    LOGGER.debug(
+                        "%s: decoder reported corruption, skipping frame", token
                     )
                     if stop_event.wait(settings.read_throttle_sec):
                         break

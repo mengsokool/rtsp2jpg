@@ -19,6 +19,14 @@ class Settings(BaseSettings):
     ffmpeg_first: bool = Field(default=True, description="Prefer FFmpeg backend when available")
     jpeg_quality: int = Field(default=85, description="JPEG quality for encoded snapshots")
     log_level: str = Field(default="INFO", description="Base logging level")
+    decoder_warning_window_sec: float = Field(
+        default=0.4,
+        description="Duration to treat decoder warnings as affecting subsequent frames",
+    )
+    enable_decoder_log_monitor: bool = Field(
+        default=True,
+        description="Capture FFmpeg/GStreamer stderr to detect decode corruption",
+    )
 
     model_config = SettingsConfigDict(
         env_file=".env",
