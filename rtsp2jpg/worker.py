@@ -14,7 +14,11 @@ from .backends import backend_name, open_stream
 from .config import get_settings
 from .db import update_status
 from .decoder_warnings import ensure_started as ensure_decoder_monitor_started
-from .decoder_warnings import had_recent_warning as decoder_warning_recent
+from .decoder_warnings import (
+    had_recent_warning_for_token as decoder_warning_recent_for_token,
+)
+from .decoder_warnings import register_stream as register_decoder_stream
+from .decoder_warnings import unregister_stream as unregister_decoder_stream
 
 LOGGER = logging.getLogger(__name__)
 
@@ -84,6 +88,7 @@ def _camera_worker(token: str, rtsp_url: str, stop_event: threading.Event) -> No
     settings = get_settings()
     backend_flag = BACKEND_CHOICE.get(token)
     ensure_decoder_monitor_started()
+    register_decoder_stream(token, rtsp_url)
 
     while not stop_event.is_set():
         try:
@@ -122,7 +127,9 @@ def _camera_worker(token: str, rtsp_url: str, stop_event: threading.Event) -> No
                         break
                     continue
 
-                if decoder_warning_recent(settings.decoder_warning_window_sec):
+                if decoder_warning_recent_for_token(
+                    token, settings.decoder_warning_window_sec
+                ):
                     LOGGER.debug(
                         "%s: decoder reported corruption, skipping frame", token
                     )
@@ -150,3 +157,4 @@ def _camera_worker(token: str, rtsp_url: str, stop_event: threading.Event) -> No
     cache.set_status(token, "inactive")
     update_status(token, "inactive")
     LOGGER.info("%s: worker stopped", token)
+    unregister_decoder_stream(token)

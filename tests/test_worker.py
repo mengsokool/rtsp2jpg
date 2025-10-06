@@ -44,7 +44,11 @@ def test_worker_skips_invalid_frames_before_caching(monkeypatch):
     monkeypatch.setattr(worker, "get_settings", lambda: _DummySettings())
     monkeypatch.setattr(worker, "update_status", lambda *args, **kwargs: None)
     monkeypatch.setattr(worker, "ensure_decoder_monitor_started", lambda: None)
-    monkeypatch.setattr(worker, "decoder_warning_recent", lambda window: False)
+    monkeypatch.setattr(worker, "register_decoder_stream", lambda *args, **kwargs: None)
+    monkeypatch.setattr(worker, "unregister_decoder_stream", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        worker, "decoder_warning_recent_for_token", lambda *args, **kwargs: False
+    )
     monkeypatch.setattr(worker, "MAX_CONSECUTIVE_FRAME_FAILURES", 2, raising=False)
 
     statuses = []
@@ -96,7 +100,11 @@ def test_worker_reconnects_after_excessive_invalid_frames(monkeypatch):
     monkeypatch.setattr(worker, "get_settings", lambda: _DummySettings())
     monkeypatch.setattr(worker, "update_status", lambda *args, **kwargs: None)
     monkeypatch.setattr(worker, "ensure_decoder_monitor_started", lambda: None)
-    monkeypatch.setattr(worker, "decoder_warning_recent", lambda window: False)
+    monkeypatch.setattr(worker, "register_decoder_stream", lambda *args, **kwargs: None)
+    monkeypatch.setattr(worker, "unregister_decoder_stream", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        worker, "decoder_warning_recent_for_token", lambda *args, **kwargs: False
+    )
     monkeypatch.setattr(worker, "MAX_CONSECUTIVE_FRAME_FAILURES", 2, raising=False)
 
     statuses = []
@@ -129,13 +137,15 @@ def test_worker_skips_frames_when_decoder_reports_warning(monkeypatch):
     monkeypatch.setattr(worker, "get_settings", lambda: _DummySettings())
     monkeypatch.setattr(worker, "update_status", lambda *args, **kwargs: None)
     monkeypatch.setattr(worker, "ensure_decoder_monitor_started", lambda: None)
+    monkeypatch.setattr(worker, "register_decoder_stream", lambda *args, **kwargs: None)
+    monkeypatch.setattr(worker, "unregister_decoder_stream", lambda *args, **kwargs: None)
 
     skip_next = iter([True, False])
 
-    def fake_warning(window: float) -> bool:
+    def fake_warning(*args, **kwargs) -> bool:
         return next(skip_next, False)
 
-    monkeypatch.setattr(worker, "decoder_warning_recent", fake_warning)
+    monkeypatch.setattr(worker, "decoder_warning_recent_for_token", fake_warning)
 
     stored_frames = []
 
