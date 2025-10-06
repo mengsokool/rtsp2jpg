@@ -1,5 +1,5 @@
 import importlib
-from typing import List
+from typing import List, Optional
 
 import pytest
 from fastapi.testclient import TestClient
@@ -82,12 +82,59 @@ def test_snapshot_success(client: TestClient, monkeypatch):
     response = client.post("/register", json={"rtsp_url": "rtsp://example"})
     token = response.json()["token"]
 
-    monkeypatch.setattr(cache, "get_jpeg", lambda _token: b"jpeg" if _token == token else None)
+    qualities: List[Optional[int]] = []
+
+    def fake_get_jpeg(_token: str, quality: Optional[int] = None) -> Optional[bytes]:
+        qualities.append(quality)
+        return b"jpeg" if _token == token else None
+
+    monkeypatch.setattr(cache, "get_jpeg", fake_get_jpeg)
 
     snapshot = client.get(f"/snapshot/{token}")
     assert snapshot.status_code == 200
     assert snapshot.content == b"jpeg"
     assert snapshot.headers["content-type"] == "image/jpeg"
+    assert qualities == [100]
+
+
+def test_snapshot_allows_quality_override(client: TestClient, monkeypatch):
+    monkeypatch.setattr(cameras, "choose_backend", lambda url, prefer=None: (None, "default"))
+    response = client.post("/register", json={"rtsp_url": "rtsp://example"})
+    token = response.json()["token"]
+
+    qualities: List[Optional[int]] = []
+
+    def fake_get_jpeg(_token: str, quality: Optional[int] = None) -> Optional[bytes]:
+        qualities.append(quality)
+        return b"jpeg" if _token == token else None
+
+    monkeypatch.setattr(cache, "get_jpeg", fake_get_jpeg)
+
+    snapshot = client.get(f"/snapshot/{token}?q=25")
+    assert snapshot.status_code == 200
+    assert snapshot.content == b"jpeg"
+    assert snapshot.headers["content-type"] == "image/jpeg"
+    assert qualities == [25]
+
+
+def test_snapshot_allows_requesting_full_quality(client: TestClient, monkeypatch):
+    monkeypatch.setattr(cameras, "choose_backend", lambda url, prefer=None: (None, "default"))
+    response = client.post("/register", json={"rtsp_url": "rtsp://example"})
+    token = response.json()["token"]
+
+    qualities: List[Optional[int]] = []
+
+    def fake_get_jpeg(_token: str, quality: Optional[int] = None) -> Optional[bytes]:
+        qualities.append(quality)
+        return b"jpeg" if _token == token else None
+
+    monkeypatch.setattr(cache, "get_jpeg", fake_get_jpeg)
+
+    snapshot = client.get(f"/snapshot/{token}?q=100")
+    assert snapshot.status_code == 200
+    assert snapshot.content == b"jpeg"
+    assert snapshot.headers["content-type"] == "image/jpeg"
+    assert qualities == [100]
 
 
 def test_status_reflects_cache_error(client: TestClient, monkeypatch):
