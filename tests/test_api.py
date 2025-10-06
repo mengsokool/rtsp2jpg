@@ -240,9 +240,16 @@ def test_app_lifespan_triggers_cleanup(tmp_path, monkeypatch):
     clear_called = []
     init_called = []
 
-    monkeypatch.setattr(app_module, "stop_all_workers", lambda: stop_called.append(True))
+    monkeypatch.setattr(app_module.worker, "stop_all_workers", lambda: stop_called.append(True))
     monkeypatch.setattr(app_module.cache, "clear_all", lambda: clear_called.append(True))
-    monkeypatch.setattr(app_module, "init_db", lambda: init_called.append(True))
+
+    original_init_db = app_module.db.init_db
+
+    def _init_wrapper():
+        init_called.append(True)
+        original_init_db()
+
+    monkeypatch.setattr(app_module.db, "init_db", _init_wrapper)
 
     app = app_module.create_app()
 

@@ -2,24 +2,38 @@
 
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from . import __version__, cache
+from . import __version__, cache, db, worker
 from .api import api_router
-from .db import init_db
+from .backends import choose_backend
 from .logging_config import configure_logging
-from .worker import stop_all_workers
+
+LOGGER = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):  # pragma: no cover - FastAPI wiring
-    init_db()
+    db.init_db()
+
+    for camera in db.list_cameras():
+        try:
+            backend_flag, _ = choose_backend(camera.rtsp_url)
+        except ValueError as exc:
+            cache.set_status(camera.token, "error", str(exc))
+            db.update_status(camera.token, "error")
+            LOGGER.error("%s: failed to select backend during startup: %s", camera.token, exc)
+            continue
+
+        worker.start_worker(camera.token, camera.rtsp_url, backend_flag)
+
     try:
         yield
     finally:
-        stop_all_workers()
+        worker.stop_all_workers()
         cache.clear_all()
 
 

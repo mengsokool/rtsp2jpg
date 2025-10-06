@@ -6,7 +6,7 @@ import sqlite3
 import threading
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Iterator, Optional
+from typing import Iterator, List, Optional
 
 from .config import get_settings
 
@@ -74,3 +74,9 @@ def delete_camera(token: str) -> None:
     with _DB_LOCK, _connection() as conn:
         conn.execute("DELETE FROM cameras WHERE token = ?", (token,))
         conn.commit()
+
+
+def list_cameras() -> List[Camera]:
+    with _DB_LOCK, _connection() as conn:
+        rows = conn.execute("SELECT token, rtsp_url, status FROM cameras").fetchall()
+    return [Camera(*row) for row in rows]
