@@ -14,6 +14,7 @@ class _DummySettings:
     read_throttle_sec = 0.0
     reconnect_delay_sec = 0.0
     jpeg_quality = 75
+    decoder_warning_window_sec = 0.2
 
 
 class _FakeCapture:
@@ -42,6 +43,12 @@ def test_worker_skips_invalid_frames_before_caching(monkeypatch):
     monkeypatch.setattr(worker, "open_stream", lambda url, flag: (fake_capture, "ok"))
     monkeypatch.setattr(worker, "get_settings", lambda: _DummySettings())
     monkeypatch.setattr(worker, "update_status", lambda *args, **kwargs: None)
+    monkeypatch.setattr(worker, "ensure_decoder_monitor_started", lambda: None)
+    monkeypatch.setattr(worker, "register_decoder_stream", lambda *args, **kwargs: None)
+    monkeypatch.setattr(worker, "unregister_decoder_stream", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        worker, "decoder_warning_recent_for_token", lambda *args, **kwargs: False
+    )
     monkeypatch.setattr(worker, "MAX_CONSECUTIVE_FRAME_FAILURES", 2, raising=False)
 
     statuses = []
@@ -92,6 +99,12 @@ def test_worker_reconnects_after_excessive_invalid_frames(monkeypatch):
     monkeypatch.setattr(worker, "open_stream", lambda url, flag: (fake_capture, "ok"))
     monkeypatch.setattr(worker, "get_settings", lambda: _DummySettings())
     monkeypatch.setattr(worker, "update_status", lambda *args, **kwargs: None)
+    monkeypatch.setattr(worker, "ensure_decoder_monitor_started", lambda: None)
+    monkeypatch.setattr(worker, "register_decoder_stream", lambda *args, **kwargs: None)
+    monkeypatch.setattr(worker, "unregister_decoder_stream", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        worker, "decoder_warning_recent_for_token", lambda *args, **kwargs: False
+    )
     monkeypatch.setattr(worker, "MAX_CONSECUTIVE_FRAME_FAILURES", 2, raising=False)
 
     statuses = []
@@ -110,3 +123,39 @@ def test_worker_reconnects_after_excessive_invalid_frames(monkeypatch):
 
     assert "connecting" in statuses
     assert stored_frames == []
+
+
+def test_worker_skips_frames_when_decoder_reports_warning(monkeypatch):
+    token = "cam-warn"
+    cache.clear(token)
+
+    stop_event = threading.Event()
+    valid_frame = np.ones((3, 3, 3), dtype=np.uint8)
+    fake_capture = _FakeCapture([(True, valid_frame), (True, valid_frame * 2)], stop_event)
+
+    monkeypatch.setattr(worker, "open_stream", lambda url, flag: (fake_capture, "ok"))
+    monkeypatch.setattr(worker, "get_settings", lambda: _DummySettings())
+    monkeypatch.setattr(worker, "update_status", lambda *args, **kwargs: None)
+    monkeypatch.setattr(worker, "ensure_decoder_monitor_started", lambda: None)
+    monkeypatch.setattr(worker, "register_decoder_stream", lambda *args, **kwargs: None)
+    monkeypatch.setattr(worker, "unregister_decoder_stream", lambda *args, **kwargs: None)
+
+    skip_next = iter([True, False])
+
+    def fake_warning(*args, **kwargs) -> bool:
+        return next(skip_next, False)
+
+    monkeypatch.setattr(worker, "decoder_warning_recent_for_token", fake_warning)
+
+    stored_frames = []
+
+    def tracked_store_frame(token_arg, frame, quality):
+        stored_frames.append(frame.copy())
+        stop_event.set()
+
+    monkeypatch.setattr(worker.cache, "store_frame", tracked_store_frame)
+
+    worker._camera_worker(token, "rtsp://example", stop_event)
+
+    assert len(stored_frames) == 1
+    np.testing.assert_array_equal(stored_frames[0], valid_frame * 2)
