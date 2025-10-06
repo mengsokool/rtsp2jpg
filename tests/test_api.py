@@ -138,8 +138,8 @@ def test_health_endpoint(client: TestClient):
 def test_register_with_preference_invokes_worker(client: TestClient, monkeypatch):
     start_calls: List[tuple] = []
 
-    def fake_start(token: str, url: str, backend_flag):
-        start_calls.append((token, url, backend_flag))
+    def fake_start(token: str, url: str, backend_flag, *, autodetect: bool = False):
+        start_calls.append((token, url, backend_flag, autodetect))
 
     monkeypatch.setattr(worker, "start_worker", fake_start)
     monkeypatch.setattr(worker, "stop_worker", lambda *_, **__: None)
@@ -158,10 +158,11 @@ def test_register_with_preference_invokes_worker(client: TestClient, monkeypatch
     payload = response.json()
     assert payload["backend"] == "ffmpeg"
     assert len(start_calls) == 1
-    token, url, backend_flag = start_calls[0]
+    token, url, backend_flag, autodetect = start_calls[0]
     assert token == payload["token"]
     assert url == "rtsp://example"
     assert backend_flag == backends.cv2.CAP_FFMPEG
+    assert autodetect is False
 
 
 def test_snapshot_unregistered_token_returns_503(client: TestClient, monkeypatch):

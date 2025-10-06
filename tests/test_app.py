@@ -22,8 +22,8 @@ def test_lifespan_restores_registered_cameras(tmp_path, monkeypatch):
 
     start_calls = []
 
-    def fake_start(token_arg, url_arg, backend_flag):
-        start_calls.append((token_arg, url_arg, backend_flag))
+    def fake_start(token_arg, url_arg, backend_flag, *, autodetect=False):
+        start_calls.append((token_arg, url_arg, backend_flag, autodetect))
 
     monkeypatch.setattr(worker, "start_worker", fake_start)
     monkeypatch.setattr(worker, "stop_all_workers", lambda: None)
@@ -36,7 +36,7 @@ def test_lifespan_restores_registered_cameras(tmp_path, monkeypatch):
     with TestClient(app_module.app, raise_server_exceptions=False):
         pass
 
-    assert start_calls == [(token, rtsp_url, 42)]
+    assert start_calls == [(token, rtsp_url, 42, False)]
 
     original_clear_all()
     config.get_settings.cache_clear()
@@ -53,7 +53,12 @@ def test_lifespan_marks_error_when_backend_unavailable(tmp_path, monkeypatch):
     rtsp_url = "rtsp://example/error"
     db.add_camera(token, rtsp_url, status="inactive")
 
-    monkeypatch.setattr(worker, "start_worker", lambda *args, **kwargs: None)
+    start_calls = []
+
+    def fake_start(token_arg, url_arg, backend_flag, *, autodetect=False):
+        start_calls.append((token_arg, url_arg, backend_flag, autodetect))
+
+    monkeypatch.setattr(worker, "start_worker", fake_start)
     monkeypatch.setattr(worker, "stop_all_workers", lambda: None)
     original_clear_all = cache.clear_all
     monkeypatch.setattr(cache, "clear_all", lambda: None)
@@ -75,6 +80,8 @@ def test_lifespan_marks_error_when_backend_unavailable(tmp_path, monkeypatch):
     camera = db.get_camera(token)
     assert camera is not None
     assert camera.status == "error"
+
+    assert start_calls == [(token, rtsp_url, None, True)]
 
     original_clear_all()
     cache.clear(token)

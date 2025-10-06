@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
+from typing import Optional
 
 from fastapi import FastAPI
 
@@ -20,15 +21,29 @@ async def _lifespan(app: FastAPI):  # pragma: no cover - FastAPI wiring
     db.init_db()
 
     for camera in db.list_cameras():
+        backend_flag = None
+        autodetect = False
+        startup_error: Optional[str] = None
+
         try:
             backend_flag, _ = choose_backend(camera.rtsp_url)
         except ValueError as exc:
-            cache.set_status(camera.token, "error", str(exc))
-            db.update_status(camera.token, "error")
-            LOGGER.error("%s: failed to select backend during startup: %s", camera.token, exc)
-            continue
+            autodetect = True
+            startup_error = str(exc)
+            LOGGER.error(
+                "%s: failed to select backend during startup: %s", camera.token, exc
+            )
 
-        worker.start_worker(camera.token, camera.rtsp_url, backend_flag)
+        worker.start_worker(
+            camera.token,
+            camera.rtsp_url,
+            backend_flag,
+            autodetect=autodetect,
+        )
+
+        if startup_error is not None:
+            cache.set_status(camera.token, "error", startup_error)
+            db.update_status(camera.token, "error")
 
     try:
         yield
