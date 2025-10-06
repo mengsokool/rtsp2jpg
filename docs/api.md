@@ -72,6 +72,11 @@ Retrieve runtime state for a camera.
 ## `GET /snapshot/{token}`
 Return the most recent JPEG frame as binary payload.
 
+Query parameters:
+
+- `q` *(optional, int, default `100`)* — JPEG quality to use when encoding the
+  snapshot (1–100). Lower values reduce file size at the cost of image quality.
+
 **Success 200**
 - Content-Type: `image/jpeg`
 - Body: JPEG bytes
